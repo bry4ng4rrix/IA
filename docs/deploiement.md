@@ -3,20 +3,24 @@
 ## Architecture
 
 ```
-Internet ──http──▶ <VPS>:8050 ─────────────────────┐
-Internet ──https─▶ nginx (hôte, Certbot) ──▶ :8050 ─┴▶ conteneur laura (uvicorn, 1 worker)
-                                                       ├─ volume laura_data   → /data/laura.db
-                                                       └─ volume laura_fiches → app/knowledge
+Internet ──https─▶ nginx (hôte, Certbot) ──▶ 127.0.0.1:8050 ──▶ conteneur laura
+   (443)                                                        (uvicorn, 1 worker)
+                                                        ├─ volume laura_data   → /data/laura.db
+                                                        └─ volume laura_fiches → app/knowledge
 ```
 
 - **Un seul worker** : `channels.py` et `quotas.py` gardent leur état en mémoire.
-- **Le port 8050 est public** (`0.0.0.0`), comme les autres projets du VPS ;
-  Docker contourne `ufw`. Limite connue : `quotas.ip_client` lit la première
-  adresse de `X-Forwarded-For`, donc un client qui appelle directement le port
-  peut choisir son IP et contourner les quotas (RG-X04). Via nginx, l'en-tête
-  est écrasé ([deploy/nginx-laura.conf](../deploy/nginx-laura.conf)).
+- **Le port 8050 n'est pas public** : le conteneur écoute sur `127.0.0.1`, seul
+  nginx l'atteint. C'est ce qui rend les quotas réels — `quotas.ip_client` lit
+  la première adresse de `X-Forwarded-For`, et nginx l'écrase par `$remote_addr`
+  ([deploy/nginx-laura.conf](../deploy/nginx-laura.conf)). Tant que le port
+  était exposé sur `0.0.0.0`, il suffisait d'appeler l'API en direct avec un
+  `X-Forwarded-For` différent à chaque requête pour n'avoir aucune limite
+  (RG-X04), et `ufw` n'y pouvait rien puisque Docker écrit ses propres règles
+  iptables.
 - **HTTPS obligatoire pour le widget** : le site est en https, il ne peut ouvrir
-  que du `wss://`, donc il doit passer par nginx et non par le port 8050.
+  qu'un `wss://`. Une page https qui tente un `ws://` est bloquée par le
+  navigateur pour contenu mixte, sans message explicite dans l'interface.
 
 ## CI/CD — [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 
@@ -46,14 +50,47 @@ Changer la configuration : modifier le secret `LAURA_ENV`, puis
 
 ## HTTPS (une fois)
 
-1. Enregistrement DNS A `laura.labeltechnology.mg` → IP du VPS.
-2. Sur le VPS :
+1. **DNS** — enregistrement A `laura.labeltechnology.mg` → IP du VPS, chez le
+   registrar du domaine. Le site reste sur son hébergement actuel : seul le
+   sous-domaine pointe vers le VPS. Vérifier la propagation avant la suite,
+   sinon certbot échoue :
+   ```bash
+   dig +short laura.labeltechnology.mg      # doit renvoyer l'IP du VPS
+   ```
+2. **Pare-feu** — 80 et 443 ouverts (80 est nécessaire au renouvellement
+   automatique du certificat, ne pas le fermer après coup) :
+   ```bash
+   sudo ufw allow 80,443/tcp
+   ```
+3. **nginx + certificat** :
    ```bash
    sudo cp ~/laura/nginx-laura.conf /etc/nginx/conf.d/laura.conf
    sudo nginx -t && sudo systemctl reload nginx
    sudo certbot --nginx -d laura.labeltechnology.mg
    ```
-3. `BASE_URL=https://laura.labeltechnology.mg` dans `LAURA_ENV` (liens des emails).
+   Certbot ajoute lui-même le bloc `listen 443 ssl`, le certificat et la
+   redirection depuis le port 80. Il installe aussi un timer de renouvellement ;
+   le vérifier une fois : `systemctl list-timers | grep certbot`.
+4. **Les trois valeurs à aligner** — c'est là que ça casse le plus souvent :
+
+   | Où | Variable | Valeur |
+   |---|---|---|
+   | Secret GitHub `LAURA_ENV` | `BASE_URL` | `https://laura.labeltechnology.mg` |
+   | Secret GitHub `LAURA_ENV` | `ALLOWED_ORIGINS` | `https://labeltechnology.mg,https://www.labeltechnology.mg` |
+   | Hébergeur du site | `NEXT_PUBLIC_LAURA_URL` | `https://laura.labeltechnology.mg` |
+
+   `NEXT_PUBLIC_*` est injecté **à la compilation** : après l'avoir ajouté, il
+   faut redéployer le site, un simple redémarrage ne suffit pas.
+
+5. **Vérifier** depuis une machine extérieure :
+   ```bash
+   curl -s https://laura.labeltechnology.mg/sante
+   # puis le WebSocket, qui doit répondre 101 Switching Protocols
+   curl -isk -o /dev/null -w '%{http_code}\n' \
+     -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Version: 13' \
+     https://laura.labeltechnology.mg/ws/chat
+   ```
 
 ## Les fiches en production
 

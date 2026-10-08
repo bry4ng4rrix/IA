@@ -15,9 +15,14 @@ services:
       # Prime sur laura.env : la base doit rester dans le volume.
       DATABASE_URL: sqlite+aiosqlite:////data/laura.db
     ports:
-      # Public, comme les autres projets du VPS (Docker contourne ufw). Attention :
-      # quotas.ip_client fait confiance à X-Forwarded-For, voir docs/deploiement.md.
-      - "0.0.0.0:${LAURA_PORT:-8050}:8000"
+      # Écoute UNIQUEMENT en local : seul nginx de l'hôte atteint le conteneur.
+      # Exposé sur 0.0.0.0, le port contournait ufw (Docker écrit ses propres
+      # règles iptables) et n'importe qui pouvait appeler l'API en direct avec
+      # le X-Forwarded-For de son choix. quotas.ip_client lit la première
+      # adresse de cet en-tête : une IP différente par requête, donc plus aucun
+      # quota (RG-X04). nginx écrase l'en-tête, encore faut-il passer par lui.
+      # deploy.sh et nginx-laura.conf visent déjà 127.0.0.1 : rien d'autre à changer.
+      - "127.0.0.1:${LAURA_PORT:-8050}:8000"
     volumes:
       - data:/data
       - fiches:/app/app/knowledge
