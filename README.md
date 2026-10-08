@@ -19,6 +19,9 @@ cp .env.example .env          # puis renseigner GEMINI_API_KEY et ADMIN_TOKEN
 Banc d'essai sur <http://localhost:8000> — les 3 canaux, le streaming et le
 compte rendu. Documentation interactive sur `/docs`.
 
+En production : image Docker déployée sur le VPS par GitHub Actions à chaque
+push sur `main`, voir [docs/deploiement.md](docs/deploiement.md).
+
 **Sans clé API, l'application démarre quand même** en mode dégradé : Laura
 renvoie un message d'attente. Pratique pour développer le widget sans
 consommer de quota.

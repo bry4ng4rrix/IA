@@ -1,0 +1,34 @@
+# Laura en production. Sur le VPS, le workflow .github/workflows/deploy.yml copie ce
+# fichier dans ~/laura avec :
+#   laura.env  configuration de l'application (secret GitHub LAURA_ENV)
+#   .env       LAURA_IMAGE et LAURA_PORT, réécrit à chaque déploiement
+#
+# En local : cp .env laura.env && docker compose up --build
+name: laura
+
+services:
+  laura:
+    image: ${LAURA_IMAGE:-laura:local}
+    build: .
+    env_file: laura.env
+    environment:
+      # Prime sur laura.env : la base doit rester dans le volume.
+      DATABASE_URL: sqlite+aiosqlite:////data/laura.db
+    ports:
+      # 127.0.0.1 uniquement, jamais 0.0.0.0 : Docker contourne ufw, et quotas.ip_client
+      # fait confiance à X-Forwarded-For. Seul nginx (deploy/nginx-laura.conf) doit
+      # pouvoir joindre le conteneur.
+      - "127.0.0.1:${LAURA_PORT:-8050}:8000"
+    volumes:
+      - data:/data
+      - fiches:/app/app/knowledge
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:
+  fiches:
