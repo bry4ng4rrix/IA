@@ -8,7 +8,7 @@
 #   VPS_KNOWN_HOSTS  empreinte du VPS (sortie de ssh-keyscan)
 #   LAURA_ENV        contenu complet du laura.env de production (modèle : .env.example)
 # Variables facultatives (onglet Variables) :
-#   LAURA_PORT       port du conteneur sur 127.0.0.1 du VPS, derrière nginx (défaut 8050)
+#   LAURA_PORT       port public du conteneur sur le VPS (défaut 8050)
 #   LAURA_DIR        dossier sur le VPS, relatif au dossier personnel (défaut laura)
 #
 # Le dépôt est public : ne jamais afficher un secret dans les logs.

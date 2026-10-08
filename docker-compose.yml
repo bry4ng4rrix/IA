@@ -15,10 +15,9 @@ services:
       # Prime sur laura.env : la base doit rester dans le volume.
       DATABASE_URL: sqlite+aiosqlite:////data/laura.db
     ports:
-      # 127.0.0.1 uniquement, jamais 0.0.0.0 : Docker contourne ufw, et quotas.ip_client
-      # fait confiance à X-Forwarded-For. Seul nginx (deploy/nginx-laura.conf) doit
-      # pouvoir joindre le conteneur.
-      - "127.0.0.1:${LAURA_PORT:-8050}:8000"
+      # Public, comme les autres projets du VPS (Docker contourne ufw). Attention :
+      # quotas.ip_client fait confiance à X-Forwarded-For, voir docs/deploiement.md.
+      - "0.0.0.0:${LAURA_PORT:-8050}:8000"
     volumes:
       - data:/data
       - fiches:/app/app/knowledge

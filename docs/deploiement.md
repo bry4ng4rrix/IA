@@ -3,17 +3,20 @@
 ## Architecture
 
 ```
-Internet ──https──▶ nginx (hôte, Certbot) ──▶ 127.0.0.1:8050 ──▶ conteneur laura (uvicorn, 1 worker)
-                                                                 ├─ volume laura_data   → /data/laura.db
-                                                                 └─ volume laura_fiches → app/knowledge
+Internet ──http──▶ <VPS>:8050 ─────────────────────┐
+Internet ──https─▶ nginx (hôte, Certbot) ──▶ :8050 ─┴▶ conteneur laura (uvicorn, 1 worker)
+                                                       ├─ volume laura_data   → /data/laura.db
+                                                       └─ volume laura_fiches → app/knowledge
 ```
 
 - **Un seul worker** : `channels.py` et `quotas.py` gardent leur état en mémoire.
-- **Le conteneur n'écoute que sur 127.0.0.1.** Docker contourne `ufw`, et
-  `quotas.ip_client` lit la première adresse de `X-Forwarded-For` : exposé
-  directement, n'importe qui pourrait choisir son IP et contourner les quotas
-  (RG-X04). nginx écrase cet en-tête ([deploy/nginx-laura.conf](../deploy/nginx-laura.conf)).
-- **HTTPS obligatoire** : le widget est servi en https, il ne peut ouvrir que du `wss://`.
+- **Le port 8050 est public** (`0.0.0.0`), comme les autres projets du VPS ;
+  Docker contourne `ufw`. Limite connue : `quotas.ip_client` lit la première
+  adresse de `X-Forwarded-For`, donc un client qui appelle directement le port
+  peut choisir son IP et contourner les quotas (RG-X04). Via nginx, l'en-tête
+  est écrasé ([deploy/nginx-laura.conf](../deploy/nginx-laura.conf)).
+- **HTTPS obligatoire pour le widget** : le site est en https, il ne peut ouvrir
+  que du `wss://`, donc il doit passer par nginx et non par le port 8050.
 
 ## CI/CD — [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 
