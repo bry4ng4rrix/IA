@@ -160,7 +160,8 @@ jobs:
           (umask 077 && printf '%s\n' "$LAURA_ENV" | tr -d '\r' > laura.env)
           # Le shell de connexion du VPS peut ne pas être bash (fish) : commandes simples seulement.
           ssh vps mkdir -p "$LAURA_DIR"
-          scp -q docker-compose.yml deploy/deploy.sh deploy/nginx-laura.conf laura.env "vps:$LAURA_DIR/"
+          scp -q docker-compose.yml deploy/deploy.sh deploy/nginx-laura.conf \
+                 deploy/laura-proxy.conf laura.env "vps:$LAURA_DIR/"
           rm -f laura.env
 
       - name: Pull de l'image et redémarrage

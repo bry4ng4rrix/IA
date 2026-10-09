@@ -64,13 +64,26 @@ Changer la configuration : modifier le secret `LAURA_ENV`, puis
    ```
 3. **nginx + certificat** :
    ```bash
-   sudo cp ~/laura/nginx-laura.conf /etc/nginx/conf.d/laura.conf
+   sudo cp    ~/laura/nginx-laura.conf /etc/nginx/sites-available/laura.labeltechnology.mg
+   sudo ln -s /etc/nginx/sites-available/laura.labeltechnology.mg /etc/nginx/sites-enabled/
+   sudo mkdir -p /etc/nginx/snippets
+   sudo cp    ~/laura/laura-proxy.conf /etc/nginx/snippets/laura-proxy.conf
    sudo nginx -t && sudo systemctl reload nginx
    sudo certbot --nginx -d laura.labeltechnology.mg
    ```
    Certbot ajoute lui-même le bloc `listen 443 ssl`, le certificat et la
    redirection depuis le port 80. Il installe aussi un timer de renouvellement ;
    le vérifier une fois : `systemctl list-timers | grep certbot`.
+
+   > ⚠ **Ne plus recopier `nginx-laura.conf` après cette étape.** certbot
+   > réécrit `/etc/nginx/sites-available/laura.labeltechnology.mg` ; le remplacer ferait retomber
+   > Laura en http seul. `nginx -t` passerait sans erreur et le widget
+   > échouerait en silence — une page https ne peut pas ouvrir un `ws://`, le
+   > navigateur bloque pour contenu mixte sans rien afficher à l'utilisateur.
+   >
+   > Les règles de proxy vivent exprès dans `laura-proxy.conf`, que certbot ne
+   > touche jamais. Pour les modifier : recopier ce seul fichier dans
+   > `/etc/nginx/snippets/` puis `sudo systemctl reload nginx`.
 4. **Les trois valeurs à aligner** — c'est là que ça casse le plus souvent :
 
    | Où | Variable | Valeur |
@@ -91,6 +104,35 @@ Changer la configuration : modifier le secret `LAURA_ENV`, puis
      -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Version: 13' \
      https://laura.labeltechnology.mg/ws/chat
    ```
+
+## Variante DuckDNS (dépannage, pas pour la production)
+
+Sans accès au DNS de `labeltechnology.mg`, un sous-domaine gratuit permet de
+valider toute la chaîne — certbot, `wss://`, widget branché sur le vrai site —
+sans attendre personne. Sur un VPS l'IP est fixe : on la renseigne une fois sur
+duckdns.org, aucun cron de mise à jour n'est nécessaire (contrairement à ce que
+décrivent la plupart des guides, prévus pour des connexions résidentielles).
+
+Quatre valeurs changent, rien dans le code : `server_name` du bloc nginx, le
+`-d` de certbot, `BASE_URL` et `NEXT_PUBLIC_LAURA_URL`. `ALLOWED_ORIGINS` ne
+bouge pas — il décrit l'origine du site, pas celle de l'API.
+
+**À ne pas faire en production**, pour deux raisons concrètes :
+
+- **Les emails partiront en indésirables.** `reclamer_conversation` envoie,
+  depuis `laura@labeltechnology.mg`, un lien vers un autre domaine avec un
+  jeton opaque en paramètre. Domaine expéditeur ≠ domaine du lien + hébergeur
+  de DNS dynamique + jeton long : c'est la signature d'un hameçonnage.
+  Microsoft 365 et Proofpoint — l'essentiel des prospects français en B2B — le
+  classent sévèrement. L'envoi réussira, l'email n'arrivera pas.
+- **Des réseaux d'entreprise bloquent les domaines de DNS dynamique** (duckdns,
+  no-ip, dyndns), couramment utilisés comme canaux de commande par des
+  logiciels malveillants. Le widget afficherait « Connexion perdue » sans que
+  personne comprenne pourquoi, chez la cible même de l'offre France.
+
+Tant que Laura tourne sur DuckDNS, laisser le chat actif mais ne pas pousser le
+bouton « recevoir une copie par email » : c'est le lien qui pose problème, pas
+la conversation.
 
 ## Les fiches en production
 
