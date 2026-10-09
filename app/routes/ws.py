@@ -36,6 +36,32 @@ log = logging.getLogger("laura.ws")
 router = APIRouter(tags=["websocket"])
 
 
+def origine_refusee(ws: WebSocket) -> bool:
+    """Contrôle de l'en-tête Origin sur la poignée de main (RG-X05).
+
+    Le CORSMiddleware ne s'applique PAS aux WebSocket : la négociation n'est
+    pas une requête soumise à la politique d'origine. Sans ce contrôle,
+    n'importe quel site pourrait intégrer Laura et consommer le quota Gemini
+    de Label, alors que la règle RG-X05 annonce l'inverse.
+
+    Une origine absente est tolérée : les navigateurs en envoient toujours une,
+    mais pas les clients serveur ni les scripts de test. Et comme un script
+    peut de toute façon forger l'en-tête, refuser son absence n'ajouterait
+    aucune sécurité tout en cassant l'outillage. Ce contrôle vise l'intégration
+    par un tiers depuis un navigateur, pas l'authentification — celle-ci repose
+    sur les quotas par IP et, pour /ws/equipe, sur le jeton d'administration.
+    """
+    origine = ws.headers.get("origin")
+    if origine is None or origine in params.origines:
+        return False
+    log.warning(
+        "Poignée de main refusée, origine « %s » absente de ALLOWED_ORIGINS (%s)",
+        origine,
+        ", ".join(params.origines),
+    )
+    return True
+
+
 @router.websocket("/ws/chat")
 async def ws_chat(
     ws: WebSocket,
@@ -46,6 +72,10 @@ async def ws_chat(
     referrer: str = Query(default=""),
     langue: str = Query(default="fr"),
 ) -> None:
+    if origine_refusee(ws):
+        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await ws.accept()
     ip = quotas.ip_client(ws)
     ip_h = hacher_ip(ip)
@@ -327,7 +357,7 @@ async def ws_equipe(
     observer: str | None = Query(default=None, description="conversation à suivre"),
 ) -> None:
     """Fil d'alertes interne (RG-X06 : jeton d'administration obligatoire)."""
-    if token != params.ADMIN_TOKEN:
+    if origine_refusee(ws) or token != params.ADMIN_TOKEN:
         await ws.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
