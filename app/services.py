@@ -270,6 +270,18 @@ async def reclamer_conversation(
     await session.commit()
 
     lien = f"{params.BASE_URL}/echange/{conv.id}?t={conv.resume_token}"
+    cr = await compte_rendu_de(session, conv.id)
+    resume = ""
+    if cr is not None:
+        resume = (
+            f"Objet : {cr.objet}\n\n{cr.resume}"
+            + (
+                f"\n\nProchaine étape : {cr.prochaine_action}"
+                if cr.prochaine_action
+                else ""
+            )
+        )
+
     await notifier(
         session,
         type_evenement=TypeEvenement.COMPTE_RENDU,
@@ -277,7 +289,9 @@ async def reclamer_conversation(
         titre="Label Technology",
         corps=(
             f"Bonjour {prospect.nom},\n\n"
-            "Voici la copie de notre échange, ainsi qu'un lien pour le relire "
+            "Voici le résumé de notre échange :\n\n"
+            f"{resume or 'Résumé indisponible.'}\n\n"
+            "Voici également la copie de notre échange et le lien pour le relire "
             f"ou le poursuivre :\n{lien}\n\n"
             f"{await transcription(session, conv.id)}\n\n"
             "--\nLaura, assistante virtuelle de Label Technology\n\n"
