@@ -1,7 +1,3 @@
-"""Espace équipe — fiches, tableau de suivi, trous.
-
-Tout est derrière le jeton d'administration (RG-X06).
-"""
 
 from __future__ import annotations
 

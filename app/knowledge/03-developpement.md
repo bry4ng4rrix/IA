@@ -8,7 +8,8 @@ Slogan : « On ne livre pas du code. On livre de la croissance. »
 Prestations : sites et applications web (de la landing page au SaaS,
 React/Next.js, Core Web Vitals optimisés) ; applications mobiles iOS/Android
 natives ou React Native, publication App Store et Google Play ; API et back-end
-(Node.js, Python, bases relationnelles et NoSQL, microservices) ; refonte et
+(Node.js, Python/FastAPI, PHP/Laravel, Java EE, bases relationnelles et NoSQL,
+microservices) ; refonte et
 migration d'applications anciennes sans interruption de service ; e-commerce
 (Shopify, WooCommerce, sur mesure, stocks en temps réel) ; audit de code et
 sécurité.
@@ -22,7 +23,7 @@ Qualité : revue de code avant fusion, tests automatisés sur les parcours
 critiques, documentation technique livrée.
 
 Technologies : Next.js, React, TypeScript, Tailwind CSS, React Native, Figma ;
-Python, FastAPI, Django, Node.js ; Supabase, PostgreSQL, MongoDB, Docker, AWS,
+Python, FastAPI, Django, Node.js, PHP, Laravel, Java EE (Jakarta EE) ; Supabase, PostgreSQL, MongoDB, Docker, AWS,
 Vercel.
 
 Délais indicatifs publiés : site vitrine 3 à 6 semaines ; application métier

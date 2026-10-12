@@ -10,7 +10,7 @@ Arguments : même langue (français) ; décalage horaire faible avec Paris (+1h 
 été, +2h en hiver : Madagascar est en avance) ; coût nettement inférieur à un
 recrutement en France ; développeurs qui travaillent avec vos outils (Git,
 Jira, Slack…) ; code qui appartient au client ; stack Next.js, React,
-React Native, Node.js, Python.
+React Native, Node.js, Python/FastAPI, PHP/Laravel, Java EE.
 
 Équipe : développeurs permanents, renforcés par des développeurs partenaires
 selon le besoin. **Ne jamais annoncer un effectif chiffré.**
