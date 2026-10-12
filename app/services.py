@@ -274,7 +274,7 @@ async def reclamer_conversation(
         session,
         type_evenement=TypeEvenement.COMPTE_RENDU,
         gravite=Gravite.NORMALE,
-        titre="Votre échange avec Label Technology",
+        titre="Label Technology",
         corps=(
             f"Bonjour {prospect.nom},\n\n"
             "Voici la copie de notre échange, ainsi qu'un lien pour le relire "
