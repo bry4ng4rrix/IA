@@ -13,6 +13,7 @@ Spécification complète : [docs/regles-de-gestion.md](docs/regles-de-gestion.md
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env          # puis renseigner GEMINI_API_KEY et ADMIN_TOKEN
+                              # DATABASE_URL : SQLite suffit en local
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -35,7 +36,7 @@ app/
 ├── enums.py         Canal, StatutConversation, Temperature, MotifAlerte…
 ├── models.py        7 tables = le diagramme de classes
 ├── schemas.py       Pydantic, dont les schémas de sortie contrainte
-├── db.py            SQLAlchemy 2.0 async + SQLite
+├── db.py            SQLAlchemy 2.0 async — PostgreSQL (prod) ou SQLite (dev)
 │
 ├── prompts.py       ← les « scripts » de Laura (identité + règles + forme)
 ├── knowledge.py     ← chargement des fiches, rechargement à chaud
@@ -53,6 +54,46 @@ app/
     ├── sessions.py  REST : ouvrir, relire, réclamer, terminer
     └── admin.py     fiches, prospects, trous, statistiques
 ```
+
+## Backend du site (remplace Supabase)
+
+Le CMS de labeltechnology.mg (dépôt `label-technology`) lisait et écrivait
+dans Supabase. Les mêmes 8 tables vivent maintenant dans la base de Laura,
+avec **les mêmes noms de colonnes** : les types de `lib/supabase.ts` restent
+valables, seul l'appel change (`supabase.from(...)` → `fetch(...)`).
+
+```
+app/site_models.py        les 8 tables de supabase/schema.sql
+app/site_schemas.py       validation = celle des server actions du site
+app/routes/site.py        /api/site/*    public, contenu publié uniquement
+app/routes/site_admin.py  /admin/site/*  X-Admin-Token
+app/site_import.py        import ponctuel des données depuis Supabase
+```
+
+| Page du site | Requête Supabase | Endpoint |
+|---|---|---|
+| accueil (services) | `services` publiés, `order` | `GET /api/site/services` |
+| /projets | `projects` publiés, `order` | `GET /api/site/projects` |
+| /recru | `job_offers` publiées, `order` | `GET /api/site/job-offers` |
+| /recru/postuler/[id] | une offre publiée | `GET /api/site/job-offers/{id}` |
+| /blog, sitemap | `blog_posts` publiés, `published_at` desc | `GET /api/site/blog-posts` |
+| /blog/[slug] | un article publié | `GET /api/site/blog-posts/{slug}` |
+| accueil, /about | `testimonials` publiés par `context` | `GET /api/site/testimonials?context=home\|about` |
+| formulaire Postuler | insert `job_applications` + email | `POST /api/site/job-applications` |
+| formulaire Contact | email (Resend) | `POST /api/site/contact` (SMTP de Laura) |
+| /setting (tableau de bord) | 7 `count` + 5 dernières candidatures | `GET /admin/site/statistiques` |
+| /setting/{services,projects,jobs,blog,testimonials} | select / insert / update / delete | `GET POST /admin/site/<table>`, `GET PUT DELETE /admin/site/<table>/{id}` |
+| /setting/jobs/candidatures | liste, statut, suppression | `GET /admin/site/job-applications?status=`, `PATCH` / `DELETE …/{id}` |
+
+`<table>` : `services`, `projects`, `job-offers`, `blog-posts`, `testimonials`.
+Slug déjà pris → `409` avec le message affiché aujourd'hui par l'admin.
+
+La connexion à `/setting` (ADMIN_PASSWORD + cookie signé) reste dans le site :
+ses server actions appellent `/admin/site/*` côté serveur avec
+`X-Admin-Token`, qui ne doit jamais partir vers le navigateur.
+
+Récupération des données depuis Supabase : voir
+[docs/deploiement.md § Passage à PostgreSQL](docs/deploiement.md#passage-à-postgresql).
 
 ## Les deux sens de « canal »
 
@@ -159,9 +200,10 @@ L'IP n'est jamais stockée en clair, seulement hachée et salée.
   change pas.
 - **`boucle_entretien`** repart de zéro à chaque redémarrage. En production,
   préférer un cron système.
-- **SQLite** convient jusqu'à quelques milliers de conversations. Au-delà,
-  basculer `DATABASE_URL` sur PostgreSQL — le code SQLAlchemy est portable tel
-  quel.
+- **PostgreSQL en production, SQLite en développement** : seul
+  `DATABASE_URL` change. Postgres applique les longueurs de colonnes et les
+  clés étrangères, SQLite non : tester sur Postgres avant de déployer une
+  modification des modèles.
 
 ## Décisions en attente
 

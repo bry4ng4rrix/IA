@@ -5,8 +5,10 @@
 ```
 Internet ──https─▶ nginx (hôte, Certbot) ──▶ 127.0.0.1:8050 ──▶ conteneur laura
    (443)                                                        (uvicorn, 1 worker)
-                                                        ├─ volume laura_data   → /data/laura.db
-                                                        └─ volume laura_fiches → app/knowledge
+                                                        ├─ volume laura_fiches → app/knowledge
+                                                        ├─ volume laura_data   → /data (ancienne base SQLite)
+                                                        └─▶ conteneur db (PostgreSQL 17, réseau interne)
+                                                              └─ volume laura_pgdata
 ```
 
 - **Un seul worker** : `channels.py` et `quotas.py` gardent leur état en mémoire.
@@ -45,8 +47,8 @@ Variables facultatives (onglet **Variables**) : `LAURA_PORT` (défaut `8050`,
 à reporter dans la conf nginx), `LAURA_DIR` (défaut `laura`).
 
 Changer la configuration : modifier le secret `LAURA_ENV`, puis
-**Actions → Build & déploiement → Run workflow**. `DATABASE_URL` est imposé par
-`docker-compose.yml` : la base reste dans le volume quoi qu'il arrive.
+**Actions → Build & déploiement → Run workflow**. `DATABASE_URL` et `POSTGRES_PASSWORD` viennent de `LAURA_ENV` : voir
+[Passage à PostgreSQL](#passage-à-postgresql).
 
 ## HTTPS (une fois)
 
@@ -157,9 +159,108 @@ docker compose restart               # redémarrer (ne relit pas laura.env)
 docker compose up -d                 # appliquer un laura.env modifié à la main
 
 # Sauvegarde cohérente de la base, même en fonctionnement
-docker compose exec -T laura python -c "import sqlite3; sqlite3.connect('/data/laura.db').backup(sqlite3.connect('/data/sauvegarde.db'))"
-docker compose cp laura:/data/sauvegarde.db ./laura-$(date +%F).db
+docker compose exec -T db pg_dump -U laura -Fc laura > laura-$(date +%F).dump
+# Restauration : docker compose exec -T db pg_restore -U laura -d laura --clean < laura-AAAA-MM-JJ.dump
+
+# Console SQL
+docker compose exec db psql -U laura
 ```
 
 Ne jamais lancer `docker compose down -v` : `-v` supprime les volumes, donc la
 base et les fiches.
+
+## Passage à PostgreSQL
+
+Une seule base PostgreSQL, dans le conteneur `db`, pour Laura **et** pour le
+contenu du site (anciennement sur Supabase). Elle n'est joignable que depuis
+le conteneur `laura` : aucun port publié.
+
+### 1. Configuration
+
+Ajouter au secret GitHub `LAURA_ENV` (le mot de passe deux fois, identique) :
+
+```
+POSTGRES_PASSWORD=<sortie de : openssl rand -hex 24>
+DATABASE_URL=postgresql+asyncpg://laura:<le même>@db:5432/laura
+```
+
+Puis pousser sur `main` (ou **Run workflow**). Au démarrage, `db` crée la
+base, Laura crée toutes les tables. À partir de là, les nouvelles
+conversations vont dans PostgreSQL.
+
+> Si `POSTGRES_PASSWORD` manque, `db` ne démarre pas, Laura non plus, et le
+> déploiement échoue sur `--wait`. Laura reste arrêtée jusqu'à ce que le
+> secret soit corrigé et le workflow relancé : mettre à jour `LAURA_ENV`
+> **avant** de pousser ce changement.
+
+### 2. Conversations existantes (SQLite → PostgreSQL)
+
+L'ancienne base est toujours dans le volume `laura_data`. Sur le VPS :
+
+```bash
+cd ~/laura
+docker compose exec laura python -m app.migrer_sqlite sqlite+aiosqlite:////data/laura.db
+```
+
+Relançable sans risque : une ligne déjà présente est ignorée, rien n'est
+écrasé, la base SQLite n'est pas modifiée. La garder quelques semaines, puis
+le volume `laura_data` pourra être supprimé.
+
+### 3. Contenu du site (Supabase → PostgreSQL)
+
+Trois façons, au choix, qui donnent exactement le même résultat. Toutes en
+lecture seule côté Supabase.
+
+**A. SQL Editor — rien à demander, juste l'accès au tableau de bord.**
+
+1. Supabase → **SQL Editor** → **New query** → coller
+   [deploy/supabase-export.sql](../deploy/supabase-export.sql) → **Run**.
+2. Le résultat est une seule cellule `export` : la copier en entier dans un
+   fichier `supabase-export.json` (les copies « Copy as JSON » sont aussi
+   acceptées).
+3. Sur le VPS :
+   ```bash
+   docker compose exec -T laura python -m app.site_import - < supabase-export.json
+   rm supabase-export.json      # contient les candidatures (données personnelles)
+   ```
+
+**B. pg_dump — copie brute, la plus fiable pour un gros volume.**
+
+Il faut la chaîne de connexion : Supabase → **Connect** (en haut) → onglet
+**Connection string** → **Session pooler** (le « Direct connection » est en
+IPv6 seulement sur l'offre gratuite), et le mot de passe de la base (Project
+Settings → Database → *Reset database password* si personne ne l'a noté).
+
+Depuis votre poste (pg_dump 15 ou plus récent), puis `scp supabase-data.sql vps:laura/` :
+
+```bash
+pg_dump "postgresql://postgres.<ref>:<mot de passe>@aws-0-<région>.pooler.supabase.com:5432/postgres" \
+  --data-only --no-owner --no-privileges \
+  -t services -t projects -t job_offers -t blog_posts -t testimonials \
+  -t tag_meta -t settings -t job_applications > supabase-data.sql
+
+# sur le VPS, base Laura déjà démarrée (tables créées), tables du site vides :
+docker compose exec -T db psql -U laura -d laura -v ON_ERROR_STOP=1 < supabase-data.sql
+```
+
+Les colonnes ont les mêmes types que dans Supabase (`text[]` compris) : le
+fichier se recharge sans conversion. Contrairement à A et C, ce n'est **pas**
+relançable sur des tables déjà remplies (doublons de clés).
+
+**C. API REST — avec la clé `service_role`** (Project Settings → API) :
+
+```bash
+docker compose exec -e SUPABASE_URL=https://<ref>.supabase.co \
+  -e SUPABASE_SERVICE_ROLE_KEY=<clé> laura python -m app.site_import
+```
+
+A et C mettent à jour les lignes par `id` : on peut importer une première fois
+pour tester, puis à nouveau juste avant de couper Supabase pour récupérer les
+dernières candidatures.
+
+### 4. Vérifier
+
+```bash
+docker compose exec db psql -U laura -c "select count(*) from services; select count(*) from job_applications; select count(*) from conversations;"
+curl -s http://127.0.0.1:8050/api/site/services | head -c 300
+```

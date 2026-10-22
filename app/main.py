@@ -23,7 +23,7 @@ from app.config import params
 from app.db import creer_tables
 from app.knowledge import fiches
 from app.maintenance import boucle_entretien
-from app.routes import admin, sessions, ws
+from app.routes import admin, sessions, site, site_admin, ws
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,13 +63,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=params.origines,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
 app.include_router(ws.router)
 app.include_router(sessions.router)
 app.include_router(admin.router)
+app.include_router(site.router)
+app.include_router(site_admin.router)
 
 if STATIC.is_dir():
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

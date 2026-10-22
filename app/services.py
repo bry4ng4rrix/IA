@@ -232,9 +232,10 @@ async def _rattacher_prospect(
         await session.flush()
 
     # On ne remplace jamais une valeur connue par du vide.
+    # Tronqué à la taille de la colonne : PostgreSQL refuse ce qui dépasse.
     for champ in ("nom", "entreprise", "email", "telephone", "pays", "secteur"):
         if valeur := getattr(p, champ, "").strip():
-            setattr(prospect, champ, valeur)
+            setattr(prospect, champ, valeur[: Prospect.__table__.c[champ].type.length])
     prospect.date_dernier_contact = datetime.now(UTC)
 
     conv.prospect_id = prospect.id
@@ -263,8 +264,8 @@ async def reclamer_conversation(
         await session.flush()
     conv.prospect_id = prospect.id
 
-    prospect.nom = nom.strip() or prospect.nom
-    prospect.email = email.strip().lower()
+    prospect.nom = nom.strip()[:200] or prospect.nom
+    prospect.email = email.strip().lower()[:200]
     prospect.consentement_le = datetime.now(UTC)  # RG-P01
     prospect.date_dernier_contact = datetime.now(UTC)
     await session.commit()
